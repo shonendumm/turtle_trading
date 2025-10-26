@@ -342,17 +342,39 @@ def plot_trades_on_price(df: pd.DataFrame, results: Dict, ticker: str = ""):
 
 # ----- Example usage -----
 if __name__ == "__main__":
-    ticker = "F"
-    start = "2023-01-01"
-    df = download_data(ticker, start=start)
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Turtle Trading Backtest')
+    parser.add_argument('--ticker', type=str, default='AAPL',
+                       help='Stock ticker symbol (default: AAPL)')
+    parser.add_argument('--start', type=str, default='2018-01-01',
+                       help='Start date in YYYY-MM-DD format (default: 2018-01-01)')
+    parser.add_argument('--equity', type=float, default=100_000,
+                       help='Starting equity (default: 100000)')
+    parser.add_argument('--risk', type=float, default=0.01,
+                       help='Risk per trade as fraction (default: 0.01 = 1%%)')
+    parser.add_argument('--stop-multiplier', type=float, default=2.0,
+                       help='Stop loss multiplier of ATR (default: 2.0)')
+    parser.add_argument('--entry-lookback', type=int, default=55,
+                       help='Entry breakout lookback period (default: 55)')
+    parser.add_argument('--exit-lookback', type=int, default=20,
+                       help='Exit lookback period (default: 20)')
+    parser.add_argument('--atr-window', type=int, default=20,
+                       help='ATR calculation window (default: 20)')
+    parser.add_argument('--max-units', type=int, default=4,
+                       help='Maximum pyramid units (default: 4)')
+    
+    args = parser.parse_args()
+    
+    df = download_data(args.ticker, start=args.start)
     df, results = run_simple_turtle_backtest(df,
-                                            starting_equity=20_000,
-                                            risk_per_trade=0.01,
-                                            stop_multiplier=2.0,
-                                            lookback_entry=55,
-                                            lookback_exit=20,
-                                            atr_window=20,
+                                            starting_equity=args.equity,
+                                            risk_per_trade=args.risk,
+                                            stop_multiplier=args.stop_multiplier,
+                                            lookback_entry=args.entry_lookback,
+                                            lookback_exit=args.exit_lookback,
+                                            atr_window=args.atr_window,
                                             use_wilder_atr=False,
-                                            max_units=4)
+                                            max_units=args.max_units)
     simple_report(results)
-    plot_trades_on_price(df, results, ticker)
+    plot_trades_on_price(df, results, args.ticker)
