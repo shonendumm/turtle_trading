@@ -86,6 +86,9 @@ positions = [
 # Monday morning: Find new opportunities
 python turtle_trade.py --mode scan --top 20 --save
 
+# Backtesting on the stock
+python turtle_trade_backtest.py --ticker F --start 2024-01-01
+
 # Review output, select 3 stocks to enter
 # Enter trades during the day
 
@@ -127,3 +130,4 @@ Edit these parameters in the code:
 - `stop_multiplier`: Default 2.0 (2× ATR stop)
 - `min_price`: Default $5 (minimum stock price)
 - `min_volume`: Default 1M shares (minimum liquidity)
+
