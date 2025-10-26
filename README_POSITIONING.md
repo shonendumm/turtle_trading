@@ -25,6 +25,8 @@ python turtle_trade_positioning.py --mode scan --top 20 --save --capital 20000 -
 - `--count 300`: Scan top 300 S&P 500 stocks
 - `--top 20`: Return top 20 best signals
 - `--save`: Optional, saves results to CSV file
+- `--capital`: overall capital you are using for trading
+- `--risk`: percentage risk, amount loss/entry price, default is 0.01 (1%), conservative use 0.005
 
 **Output:** You'll get a list of 20 stocks showing:
 - Current price and entry breakout level
