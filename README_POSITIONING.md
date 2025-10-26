@@ -40,7 +40,7 @@ python turtle_trade_positioning.py --mode scan --top 20 --save --capital 20000 -
 Check your current positions for exit signals:
 
 ```bash
-python turtle_trade_positioning.py --mode monitor --save
+python turtle_trade.py --mode monitor --save
 ```
 
 **Before running**, edit the `positions` list in the code (around line 340):
@@ -84,13 +84,13 @@ positions = [
 
 ```bash
 # Monday morning: Find new opportunities
-python turtle_trade_positioning.py --mode scan --top 20 --save
+python turtle_trade.py --mode scan --top 20 --save
 
 # Review output, select 3 stocks to enter
 # Enter trades during the day
 
 # Monday evening: Check positions
-python turtle_trade_positioning.py --mode monitor
+python turtle_trade.py --mode monitor
 
 # Repeat daily
 ```

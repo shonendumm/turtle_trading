@@ -1,358 +1,467 @@
-# turtle_trade.py
+# turtle_trade_positioning.py
 """
-Turtle-style trading analyzer + position sizing + simple backtest.
-Author: ChatGPT (example)
-Requirements: pip install yfinance pandas numpy matplotlib
+Daily scanner for Turtle Trading entry/exit signals across top US equities.
+Scans top 300 US stocks and identifies the best 20 candidates showing entry signals.
+
+Author: ChatGPT
+Requirements: pip install yfinance pandas numpy tqdm
 """
 
-import math
-import numpy as np
 import pandas as pd
+import numpy as np
 import yfinance as yf
-import matplotlib.pyplot as plt
-from typing import Tuple, Dict, List
+from datetime import datetime, timedelta
+from typing import List, Dict, Tuple
+from tqdm import tqdm
+import math
+import warnings
+warnings.filterwarnings('ignore')
 
-# ----- Utilities & indicators -----
-def download_data(ticker: str, start: str = "2018-01-01", end: str = None) -> pd.DataFrame:
-    """Download daily OHLCV from yfinance and return a DataFrame with datetime index."""
-    df = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=False)
+# Import functions from turtle_trade.py
+from turtle_trade_backtest import download_data, compute_atr, compute_breakouts
+
+# ----- Top US stocks list -----
+def get_hardcoded_top_stocks() -> List[str]:
+    """
+    Hardcoded list of major US stocks (top ~300 by market cap).
+    This is a fallback when Wikipedia scraping fails.
+    """
+    return [
+        # Mega cap tech
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'ORCL', 'ADBE',
+        # Large cap tech
+        'CRM', 'CSCO', 'ACN', 'AMD', 'IBM', 'INTC', 'QCOM', 'TXN', 'INTU', 'NOW',
+        'AMAT', 'MU', 'ADI', 'LRCX', 'KLAC', 'SNPS', 'CDNS', 'MCHP', 'FTNT', 'PANW',
+        # Financials
+        'BRK-B', 'JPM', 'V', 'MA', 'BAC', 'WFC', 'GS', 'MS', 'SPGI', 'BLK',
+        'C', 'SCHW', 'AXP', 'PGR', 'CB', 'MMC', 'ICE', 'CME', 'MCO', 'AON',
+        'PNC', 'USB', 'TFC', 'COF', 'AIG', 'MET', 'PRU', 'AFL', 'ALL', 'TRV',
+        # Healthcare
+        'UNH', 'LLY', 'JNJ', 'ABBV', 'MRK', 'TMO', 'ABT', 'DHR', 'PFE', 'BMY',
+        'AMGN', 'GILD', 'CVS', 'MDT', 'CI', 'ISRG', 'VRTX', 'REGN', 'ELV', 'HUM',
+        'BSX', 'ZTS', 'SYK', 'BDX', 'EW', 'A', 'IQV', 'IDXX', 'RMD', 'DXCM',
+        # Consumer
+        'WMT', 'HD', 'PG', 'COST', 'KO', 'PEP', 'MCD', 'NKE', 'TM', 'DIS',
+        'CMCSA', 'NFLX', 'SBUX', 'LOW', 'TGT', 'TJX', 'BKNG', 'MAR', 'ABNB', 'CMG',
+        'PM', 'MO', 'MDLZ', 'GIS', 'HSY', 'KHC', 'CAG', 'CPB', 'SJM', 'K',
+        # Energy
+        'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'MPC', 'PSX', 'VLO', 'OXY', 'HES',
+        'WMB', 'KMI', 'HAL', 'BKR', 'FANG', 'DVN', 'MRO', 'APA', 'OVV', 'CTRA',
+        # Industrials
+        'BA', 'HON', 'UNP', 'RTX', 'CAT', 'GE', 'LMT', 'DE', 'UPS', 'ADP',
+        'ITW', 'MMM', 'GD', 'NOC', 'TDG', 'ETN', 'EMR', 'PH', 'PCAR', 'CMI',
+        'FDX', 'NSC', 'CSX', 'WM', 'RSG', 'CARR', 'OTIS', 'IR', 'FAST', 'PAYX',
+        # Materials
+        'LIN', 'APD', 'SHW', 'ECL', 'DD', 'NEM', 'FCX', 'DOW', 'PPG', 'NUE',
+        'APH', 'VMC', 'MLM', 'BALL', 'AVY', 'CF', 'MOS', 'FMC', 'ALB', 'CE',
+        # Communication Services
+        'GOOG', 'T', 'VZ', 'TMUS', 'CHTR', 'EA', 'TTWO', 'NTES', 'MTCH', 'PARA',
+        # Utilities
+        'NEE', 'DUK', 'SO', 'D', 'AEP', 'EXC', 'SRE', 'XEL', 'PCG', 'ED',
+        # Real Estate
+        'PLD', 'AMT', 'EQIX', 'CCI', 'PSA', 'O', 'WELL', 'DLR', 'SBAC', 'SPG',
+        # Additional tech & growth
+        'SHOP', 'SQ', 'PYPL', 'UBER', 'LYFT', 'ROKU', 'SNOW', 'CRWD', 'ZS', 'NET',
+        'DDOG', 'MDB', 'TEAM', 'WDAY', 'ZM', 'DOCU', 'TWLO', 'OKTA', 'SPLK', 'ESTC',
+        # Biotech
+        'BIIB', 'MRNA', 'ALNY', 'SGEN', 'NBIX', 'EXAS', 'INCY', 'TECH', 'UTHR', 'BMRN',
+        # Semiconductors
+        'ASML', 'TSM', 'AVGO', 'TER', 'MPWR', 'NXPI', 'STM', 'ON', 'SWKS', 'QRVO',
+        # Financial services
+        'FIS', 'FISV', 'PYPL', 'SQ', 'COIN', 'MSTR', 'HOOD', 'SOFI', 'NU', 'AFRM',
+        # E-commerce & retail
+        'EBAY', 'ETSY', 'W', 'CHWY', 'CVNA', 'KSS', 'M', 'JWN', 'DKS', 'BBY',
+        # Auto
+        'F', 'GM', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI', 'STLA', 'HMC', 'RACE',
+        # Aerospace & Defense
+        'LHX', 'HWM', 'AXON', 'TXT', 'HII', 'LMT', 'NOC', 'GD', 'RTX', 'BA',
+        # More diversified
+        'BHP', 'RIO', 'VALE', 'SCCO', 'AA', 'X', 'CLF', 'MT', 'TX', 'STLD',
+        'ADM', 'BG', 'TSN', 'HRL', 'INGR', 'DAR', 'SMG', 'FMC', 'MOS', 'NTR',
+        'LUV', 'DAL', 'UAL', 'AAL', 'JBLU', 'SAVE', 'ALGT', 'HA', 'SKYW', 'MESA',
+    ]
+
+def get_sp500_tickers() -> List[str]:
+    """Get S&P 500 ticker list from Wikipedia with proper headers."""
+    try:
+        # Add headers to avoid 403 error
+        import urllib.request
+        url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        tables = pd.read_html(urllib.request.urlopen(req))
+        sp500_table = tables[0]
+        tickers = sp500_table['Symbol'].tolist()
+        # Clean tickers (some may have special characters)
+        tickers = [ticker.replace('.', '-') for ticker in tickers]
+        return tickers
+    except Exception as e:
+        print(f"⚠️  Could not fetch S&P 500 from Wikipedia: {e}")
+        print(f"📋 Using hardcoded list of top US stocks instead...")
+        return get_hardcoded_top_stocks()
+
+def get_top_us_stocks(count: int = 300) -> List[str]:
+    """
+    Get top US stocks. Uses S&P 500 as base, with hardcoded fallback.
+    You can modify this to use other sources or custom lists.
+    """
+    sp500 = get_sp500_tickers()
+    
+    if not sp500:
+        print("❌ Could not retrieve any ticker list.")
+        return []
+    
+    return sp500[:min(count, len(sp500))]
+
+# ----- Signal detection -----
+def check_entry_signal(ticker: str, 
+                       lookback_entry: int = 55,
+                       lookback_exit: int = 20,
+                       atr_window: int = 20,
+                       min_price: float = 5.0,
+                       min_volume: float = 1_000_000) -> Dict:
+    """
+    Check if a ticker shows turtle trading entry signal TODAY.
+    Returns dict with signal info or None if no signal.
+    """
+    try:
+        # Download recent data (need extra days for lookback)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=lookback_entry + 30)
+        
+        df = download_data(ticker, 
+                          start=start_date.strftime('%Y-%m-%d'),
+                          end=end_date.strftime('%Y-%m-%d'))
+        
+        if df.empty or len(df) < lookback_entry + 1:
+            return None
+        
+        # Filter out low-price/low-volume stocks
+        latest = df.iloc[-1]
+        if latest['Close'] < min_price or latest['Volume'] < min_volume:
+            return None
+        
+        # Compute indicators
+        df['ATR'] = compute_atr(df, atr_window, use_wilder=False)
+        df = compute_breakouts(df, lookback_entry, lookback_exit)
+        
+        # Check latest row for entry signal
+        latest = df.iloc[-1]
+        prev = df.iloc[-2]
+        
+        # Entry signal: today's close > 55-day high
+        has_entry_signal = latest['Close'] > latest['HH_entry']
+        
+        # Also check it's a NEW breakout (wasn't triggered yesterday)
+        is_new_breakout = prev['Close'] <= prev['HH_entry']
+        
+        if has_entry_signal and is_new_breakout:
+            # Calculate position sizing info
+            atr = latest['ATR']
+            stop_price = latest['Close'] - 2.0 * atr
+            exit_price = latest['LL_exit']
+            
+            # Position sizing metrics
+            # Note: The exit level (20-day low) will RISE as price rises (trailing stop)
+            # So the current exit level is just informational - it's not a profit target
+            risk_per_share = latest['Close'] - stop_price
+            current_exit_distance = latest['Close'] - exit_price
+            
+            # Breakout strength relative to risk (not traditional risk/reward since no fixed target)
+            breakout_strength = latest['Close'] - latest['HH_entry']
+            strength_risk_ratio = breakout_strength / risk_per_share if risk_per_share > 0 else 0
+            
+            return {
+                'ticker': ticker,
+                'date': df.index[-1].strftime('%Y-%m-%d'),
+                'close': latest['Close'],
+                'entry_level': latest['HH_entry'],
+                'exit_level': latest['LL_exit'],
+                'stop_price': stop_price,
+                'atr': atr,
+                'volume': latest['Volume'],
+                'breakout_pct': ((latest['Close'] - latest['HH_entry']) / latest['HH_entry'] * 100),
+                'risk_per_share': risk_per_share,
+                'exit_distance': current_exit_distance,
+                'breakout_strength': breakout_strength,
+                'strength_risk_ratio': strength_risk_ratio,
+            }
+        
+        return None
+        
+    except Exception as e:
+        # Silently skip problematic tickers
+        return None
+
+def check_exit_signal(ticker: str,
+                      entry_price: float,
+                      lookback_exit: int = 20,
+                      atr_window: int = 20,
+                      stop_multiplier: float = 2.0) -> Dict:
+    """
+    For existing positions, check if exit signal is triggered.
+    Returns current price, exit level, stop level, and whether to exit.
+    """
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=lookback_exit + 30)
+        
+        df = download_data(ticker,
+                          start=start_date.strftime('%Y-%m-%d'),
+                          end=end_date.strftime('%Y-%m-%d'))
+        
+        if df.empty:
+            return None
+        
+        # Compute indicators
+        df['ATR'] = compute_atr(df, atr_window, use_wilder=False)
+        df = compute_breakouts(df, 55, lookback_exit)
+        
+        latest = df.iloc[-1]
+        atr = latest['ATR']
+        stop_price = entry_price - stop_multiplier * atr
+        
+        # Check exit conditions
+        exit_signal = latest['Close'] < latest['LL_exit']
+        stop_hit = latest['Low'] <= stop_price
+        
+        pnl = latest['Close'] - entry_price
+        pnl_pct = (pnl / entry_price) * 100
+        
+        return {
+            'ticker': ticker,
+            'date': df.index[-1].strftime('%Y-%m-%d'),
+            'entry_price': entry_price,
+            'current_price': latest['Close'],
+            'exit_level': latest['LL_exit'],
+            'stop_price': stop_price,
+            'atr': atr,
+            'pnl': pnl,
+            'pnl_pct': pnl_pct,
+            'exit_signal': exit_signal,
+            'stop_hit': stop_hit,
+            'action': 'EXIT NOW' if (exit_signal or stop_hit) else 'HOLD',
+        }
+        
+    except Exception as e:
+        return None
+
+# ----- Scanner functions -----
+def scan_for_entries(tickers: List[str],
+                     lookback_entry: int = 55,
+                     lookback_exit: int = 20,
+                     atr_window: int = 20,
+                     top_n: int = 20) -> pd.DataFrame:
+    """
+    Scan list of tickers for entry signals and return top N candidates.
+    """
+    print(f"\n{'='*80}")
+    print(f"TURTLE TRADING ENTRY SCANNER")
+    print(f"{'='*80}")
+    print(f"Scanning {len(tickers)} tickers for entry signals...")
+    print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    
+    signals = []
+    
+    for ticker in tqdm(tickers, desc="Scanning"):
+        signal = check_entry_signal(ticker, lookback_entry, lookback_exit, atr_window)
+        if signal:
+            signals.append(signal)
+    
+    if not signals:
+        print("\n❌ No entry signals found today.")
+        return pd.DataFrame()
+    
+    # Convert to DataFrame and sort by strength/risk ratio (best signals first)
+    df = pd.DataFrame(signals)
+    df = df.sort_values('strength_risk_ratio', ascending=False)
+    
+    # Return top N
+    return df.head(top_n)
+
+def print_entry_signals(df: pd.DataFrame, capital: float | None = None, risk_pct: float = 0.01):
+    """Pretty print entry signals. If capital is provided, also show position sizing.
+    capital: total trading capital available (e.g., 20000)
+    risk_pct: fraction of capital to risk per trade (e.g., 0.01 for 1%)
+    """
     if df.empty:
-        raise ValueError(f"No data downloaded for {ticker}.")
-    # Handle both single-level and multi-level column structures
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.droplevel(1)
-    # Select only the columns that exist
-    available_cols = [col for col in ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'] if col in df.columns]
-    df = df[available_cols].copy()
-    df.index = pd.to_datetime(df.index)
+        return
+    
+    print(f"\n{'='*80}")
+    print(f"🎯 ENTRY SIGNALS DETECTED: {len(df)} stocks")
+    print(f"{'='*80}\n")
+    
+    for idx, row in df.iterrows():
+        print(f"{'='*80}")
+        print(f"📈 {row['ticker']}")
+        print(f"{'='*80}")
+        print(f"  Date:              {row['date']}")
+        print(f"  Current Price:     ${row['close']:.2f}")
+        print(f"  Entry Level:       ${row['entry_level']:.2f} (55-day high)")
+        print(f"  Breakout Strength: {row['breakout_pct']:.2f}% above entry level")
+        print(f"  ")
+        print(f"  📍 POSITION SIZING:")
+        print(f"  ATR (20-day):      ${row['atr']:.2f}")
+        print(f"  Stop Loss:         ${row['stop_price']:.2f} (Entry - 2×ATR)")
+        print(f"  Risk per share:    ${row['risk_per_share']:.2f}")
+        
+        # Optional: position sizing suggestions based on capital and risk
+        if capital is not None and row['risk_per_share'] > 0 and row['close'] > 0:
+            risk_budget = capital * max(min(risk_pct, 1.0), 0.0)
+            shares_by_risk = math.floor(risk_budget / row['risk_per_share']) if risk_budget > 0 else 0
+            shares_by_cap = math.floor(capital / row['close'])
+            suggested_shares = min(shares_by_risk, shares_by_cap)
+            suggested_shares = max(suggested_shares, 0)
+            est_cost = suggested_shares * row['close']
+            print(f"  -- With capital ${capital:,.0f} and risk {risk_pct*100:.1f}%:")
+            print(f"     Shares by risk:     {shares_by_risk:,}")
+            print(f"     Shares by capital:  {shares_by_cap:,}")
+            print(f"     Suggested shares:   {suggested_shares:,} (~${est_cost:,.2f})")
+        
+        print(f"  ")
+        print(f"  🎯 EXIT STRATEGY:")
+        print(f"  Current 20-day low: ${row['exit_level']:.2f}")
+        print(f"  Exit cushion:       ${row['exit_distance']:.2f} (current price - 20-day low)")
+        print(f"  ⚠️  NOTE: The 20-day low will RISE as price rises (trailing exit)")
+        print(f"      Exit when price falls BELOW the 20-day low")
+        print(f"  ")
+        print(f"  📊 METRICS:")
+        print(f"  Breakout strength: ${row['breakout_strength']:.2f}/share above entry")
+        print(f"  Strength/Risk:     {row['strength_risk_ratio']:.2f}x (breakout momentum vs risk)")
+        print(f"  Volume:            {row['volume']:,.0f}")
+        print()
+    
+    print(f"{'='*80}\n")
+
+def monitor_positions(positions: List[Dict]) -> pd.DataFrame:
+    """
+    Monitor existing positions for exit signals.
+    positions: list of dicts with {'ticker': str, 'entry_price': float, 'shares': int}
+    """
+    print(f"\n{'='*80}")
+    print(f"POSITION MONITORING")
+    print(f"{'='*80}")
+    print(f"Checking {len(positions)} positions...")
+    print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    
+    results = []
+    
+    for pos in tqdm(positions, desc="Monitoring"):
+        result = check_exit_signal(pos['ticker'], pos['entry_price'])
+        if result:
+            result['shares'] = pos.get('shares', 0)
+            result['position_value'] = result['shares'] * result['current_price']
+            result['total_pnl'] = result['shares'] * result['pnl']
+            results.append(result)
+    
+    if not results:
+        print("\n❌ Could not retrieve data for positions.")
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(results)
     return df
 
-def compute_true_range(df: pd.DataFrame) -> pd.Series:
-    """Compute True Range (TR) series."""
-    prev_close = df['Close'].shift(1)
-    tr1 = df['High'] - df['Low']
-    tr2 = (df['High'] - prev_close).abs()
-    tr3 = (df['Low'] - prev_close).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    return tr
+def print_position_status(df: pd.DataFrame):
+    """Pretty print position monitoring results."""
+    if df.empty:
+        return
+    
+    print(f"\n{'='*80}")
+    print(f"📊 POSITION STATUS: {len(df)} positions")
+    print(f"{'='*80}\n")
+    
+    total_pnl = df['total_pnl'].sum()
+    
+    for idx, row in df.iterrows():
+        action_color = "🚨" if row['action'] == 'EXIT NOW' else "✅"
+        pnl_sign = "+" if row['pnl'] >= 0 else ""
+        
+        print(f"{'='*80}")
+        print(f"{action_color} {row['ticker']} - {row['action']}")
+        print(f"{'='*80}")
+        print(f"  Entry Price:       ${row['entry_price']:.2f}")
+        print(f"  Current Price:     ${row['current_price']:.2f}")
+        print(f"  Shares:            {row['shares']:,.0f}")
+        print(f"  Position Value:    ${row['position_value']:,.2f}")
+        print(f"  P&L:               {pnl_sign}${row['total_pnl']:,.2f} ({pnl_sign}{row['pnl_pct']:.2f}%)")
+        print(f"  ")
+        print(f"  Exit Level:        ${row['exit_level']:.2f} (20-day low)")
+        print(f"  Stop Price:        ${row['stop_price']:.2f} (2× ATR)")
+        print(f"  ")
+        if row['exit_signal']:
+            print(f"  ⚠️  EXIT SIGNAL: Price broke below 20-day low!")
+        if row['stop_hit']:
+            print(f"  🛑 STOP HIT: Price hit stop loss level!")
+        print()
+    
+    print(f"{'='*80}")
+    print(f"Total P&L: {'+' if total_pnl >= 0 else ''}${total_pnl:,.2f}")
+    print(f"{'='*80}\n")
 
-def compute_atr(df: pd.DataFrame, atr_window: int = 20, use_wilder: bool = False) -> pd.Series:
-    """Compute ATR (N). If use_wilder True, use Wilder smoothing (exponential-like)."""
-    tr = compute_true_range(df)
-    if use_wilder:
-        # Wilder smoothing: first value is simple mean, then: ATR_t = (ATR_{t-1}*(n-1) + TR_t)/n
-        atr = tr.rolling(window=atr_window).mean().copy()
-        atr.iloc[atr_window:] = np.nan  # placeholder; we'll compute iteratively
-        # compute the Wilder-smoothed ATR iteratively
-        atr_values = []
-        trs = tr.values
-        n = atr_window
-        # first ATR value is simple mean of first n TRs
-        if len(trs) >= n:
-            first_atr = trs[1:n+1].mean()  # skip index 0 because TR for first row may be NaN due to shift
-        else:
-            return pd.Series(index=df.index, dtype=float)
-        atr_values = [np.nan] * (n)  # until index n
-        atr_prev = first_atr
-        atr_values.append(atr_prev)
-        for t in range(n+1, len(trs)):
-            atr_prev = (atr_prev * (n - 1) + trs[t]) / n
-            atr_values.append(atr_prev)
-        # align length
-        atr_series = pd.Series(data=atr_values, index=df.index[:len(atr_values)])
-        atr_series = atr_series.reindex(df.index)  # pad with NaN if needed
-        return atr_series
-    else:
-        return tr.rolling(window=atr_window, min_periods=1).mean()
+def save_signals_to_csv(df: pd.DataFrame, filename: str = None):
+    """Save signals to CSV file for record keeping."""
+    if df.empty:
+        return
+    
+    if filename is None:
+        filename = f"output/turtle_signals_{datetime.now().strftime('%Y%m%d')}.csv"
+    
+    df.to_csv(filename, index=False)
+    print(f"💾 Signals saved to: {filename}")
 
-def compute_breakouts(df: pd.DataFrame, lookback_entry: int = 55, lookback_exit: int = 20) -> pd.DataFrame:
-    """Compute breakout levels and signals based on highest high and lowest low."""
-    df = df.copy()
-    df['HH_entry'] = df['High'].rolling(window=lookback_entry, min_periods=lookback_entry).max().shift(1)  # prior breakout level
-    df['LL_exit']  = df['Low'].rolling(window=lookback_exit, min_periods=lookback_exit).min().shift(1)
-    df['HH20'] = df['High'].rolling(window=20, min_periods=20).max().shift(1)
-    # Entry signal: today's close > HH_entry
-    df['entry_signal'] = (df['Close'] > df['HH_entry']).astype(int)
-    # Exit signal: today's close < LL_exit
-    df['exit_signal']  = (df['Close'] < df['LL_exit']).astype(int)
-    return df
-
-# ----- Position sizing -----
-def turtle_position_size(equity: float, atr: float, risk_per_trade: float = 0.01, stop_multiplier: float = 2.0,
-                         allow_fractional: bool = False) -> int:
-    """
-    Compute number of shares to buy using a Turtle-style sizing:
-      shares = floor((equity * risk_per_trade) / (stop_multiplier * ATR))
-    where per-share risk = stop_multiplier * ATR.
-    """
-    if atr <= 0 or np.isnan(atr):
-        return 0
-    per_share_risk = stop_multiplier * atr
-    if per_share_risk <= 0:
-        return 0
-    raw_shares = (equity * risk_per_trade) / per_share_risk
-    if allow_fractional:
-        return raw_shares
-    return int(math.floor(raw_shares))
-
-# ----- Simple backtester (single ticker) -----
-def run_simple_turtle_backtest(df: pd.DataFrame,
-                               starting_equity: float = 100_000,
-                               risk_per_trade: float = 0.01,
-                               stop_multiplier: float = 2.0,
-                               lookback_entry: int = 55,
-                               lookback_exit: int = 20,
-                               atr_window: int = 20,
-                               use_wilder_atr: bool = False,
-                               max_units: int = 4) -> Tuple[pd.DataFrame, Dict]:
-    """
-    A simple backtest that:
-      - uses 55-day breakout to enter (one 'unit' per breakout),
-      - uses 20-day low as exit,
-      - uses ATR-based sizing where each new unit is sized with current equity,
-      - uses stop at entry - stop_multiplier * ATR (per unit).
-    This is illustrative and omits many real-world details (commissions, slippage, partial fills, margin, etc.).
-    """
-    df = df.copy()
-    df['ATR'] = compute_atr(df, atr_window, use_wilder_atr)
-    df = compute_breakouts(df, lookback_entry, lookback_exit)
-    nrows = len(df)
-    equity = starting_equity
-    cash = starting_equity
-    positions = 0
-    entry_price = None
-    stop_price = None
-    trades = []  # list of trades for analysis
-    equity_curve = []
-
-    for i in range(nrows):
-        row = df.iloc[i]
-        date = df.index[i]
-        close = row['Close']
-        atr = row['ATR']
-        entry_signal = row['entry_signal']
-        exit_signal = row['exit_signal']
-
-        # Check exit first: if exit_signal and we have position -> liquidate everything
-        if exit_signal and positions > 0:
-            proceeds = positions * close
-            pnl = proceeds - positions * entry_price
-            cash += proceeds
-            equity = cash  # no other assets in this simple backtest
-            trades.append({
-                'date': date, 'type': 'exit', 'price': close, 'shares': positions, 'pnl': pnl
-            })
-            positions = 0
-            entry_price = None
-            stop_price = None
-
-        # Check stop loss: if we have a position and today's low <= stop -> stop hit
-        if positions > 0 and row['Low'] <= stop_price:
-            # assume stop executed at stop_price (could be row['Low'] in reality)
-            executed_price = stop_price
-            proceeds = positions * executed_price
-            pnl = proceeds - positions * entry_price
-            cash += proceeds
-            equity = cash
-            trades.append({
-                'date': date, 'type': 'stop', 'price': executed_price, 'shares': positions, 'pnl': pnl
-            })
-            positions = 0
-            entry_price = None
-            stop_price = None
-
-        # Entry: if entry_signal and we have fewer than max_units -> buy one unit sized by current equity
-        if entry_signal and positions == 0:
-            # open first unit
-            shares = turtle_position_size(equity, atr, risk_per_trade, stop_multiplier)
-            if shares > 0:
-                cost = shares * close
-                # allow allocation only if cash available (otherwise skip)
-                if cost <= cash:
-                    cash -= cost
-                    positions = shares
-                    entry_price = close
-                    stop_price = entry_price - stop_multiplier * atr
-                    trades.append({
-                        'date': date, 'type': 'entry', 'price': close, 'shares': shares
-                    })
-        elif entry_signal and positions > 0 and positions < max_units:
-            # pyramid: buy an additional unit (size computed at current equity)
-            shares = turtle_position_size(equity, atr, risk_per_trade, stop_multiplier)
-            if shares > 0:
-                cost = shares * close
-                if cost <= cash:
-                    cash -= cost
-                    # new average entry price (simple weighted avg)
-                    total_shares = positions + shares
-                    new_entry_price = (entry_price * positions + close * shares) / total_shares
-                    positions = total_shares
-                    entry_price = new_entry_price
-                    stop_price = entry_price - stop_multiplier * atr
-                    trades.append({
-                        'date': date, 'type': 'pyramid', 'price': close, 'shares': shares
-                    })
-
-        # update equity each day (mark to market)
-        mtm = positions * close
-        equity = cash + mtm
-        equity_curve.append({'date': date, 'equity': equity, 'cash': cash, 'positions': positions, 'mtm': mtm})
-
-    equity_df = pd.DataFrame(equity_curve).set_index('date')
-    results = {
-        'final_equity': equity,
-        'starting_equity': starting_equity,
-        'trades': trades,
-        'equity_curve': equity_df,
-    }
-    return df, results
-
-# ----- Quick reporting / plotting helpers -----
-def simple_report(results: Dict):
-    print(f"\n{'='*60}")
-    print(f"BACKTEST RESULTS")
-    print(f"{'='*60}")
-    print(f"Starting equity: ${results['starting_equity']:,.2f}")
-    print(f"Final equity:    ${results['final_equity']:,.2f}")
-    print(f"Total return:    {((results['final_equity'] / results['starting_equity']) - 1) * 100:.2f}%")
-    
-    trades = results['trades']
-    entries = [t for t in trades if t['type'] == 'entry']
-    pyramids = [t for t in trades if t['type'] == 'pyramid']
-    exits = [t for t in trades if t.get('type') in ('exit', 'stop')]
-    wins = [t for t in exits if t.get('pnl', 0) > 0]
-    losses = [t for t in exits if t.get('pnl', 0) <= 0]
-    
-    print(f"\nTRADE SUMMARY:")
-    print(f"  Initial entries:  {len(entries)}")
-    print(f"  Pyramid adds:     {len(pyramids)}")
-    print(f"  Total exits:      {len(exits)}")
-    print(f"  Winning exits:    {len(wins)} ({len(wins)/len(exits)*100:.1f}% win rate)" if len(exits) > 0 else "  Winning exits:    0")
-    print(f"  Losing exits:     {len(losses)}")
-    
-    if wins:
-        avg_win = sum(t['pnl'] for t in wins) / len(wins)
-        print(f"  Avg winning PnL:  ${avg_win:,.2f}")
-    if losses:
-        avg_loss = sum(t['pnl'] for t in losses) / len(losses)
-        print(f"  Avg losing PnL:   ${avg_loss:,.2f}")
-    
-    if len(results['equity_curve']) > 0:
-        eq = results['equity_curve']['equity']
-        drawdown = (eq.cummax() - eq) / eq.cummax()
-        max_dd = drawdown.max()
-        print(f"\nRISK METRICS:")
-        print(f"  Max drawdown:     {max_dd:.2%}")
-    
-    # Show first few trades as examples
-    print(f"\n{'='*60}")
-    print(f"TRADE DETAILS (first 10):")
-    print(f"{'='*60}")
-    for i, t in enumerate(trades[:10]):
-        pnl_str = f" | PnL: ${t['pnl']:,.2f}" if 'pnl' in t else ""
-        print(f"{t['date'].strftime('%Y-%m-%d')} | {t['type'].upper():8s} | Price: ${t['price']:.2f} | Shares: {t['shares']}{pnl_str}")
-    
-    if len(trades) > 10:
-        print(f"... ({len(trades) - 10} more trades)")
-    print(f"{'='*60}\n")
-
-def plot_equity_curve(results: Dict):
-    eq = results['equity_curve']
-    plt.figure(figsize=(10,5))
-    plt.plot(eq.index, eq['equity'])
-    plt.title('Equity Curve')
-    plt.xlabel('Date')
-    plt.ylabel('Equity')
-    plt.grid(True)
-    plt.show()
-
-def plot_trades_on_price(df: pd.DataFrame, results: Dict, ticker: str = ""):
-    """Plot price chart with entry/exit points marked."""
-    trades = results['trades']
-    
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), gridspec_kw={'height_ratios': [3, 1]})
-    
-    # Top panel: Price and trades
-    ax1.plot(df.index, df['Close'], label='Close Price', color='black', alpha=0.7, linewidth=1)
-    
-    # Plot breakout levels
-    if 'HH_entry' in df.columns:
-        ax1.plot(df.index, df['HH_entry'], label='55-day High (Entry)', 
-                color='green', alpha=0.3, linewidth=1, linestyle='--')
-    if 'LL_exit' in df.columns:
-        ax1.plot(df.index, df['LL_exit'], label='20-day Low (Exit)', 
-                color='red', alpha=0.3, linewidth=1, linestyle='--')
-    
-    # Mark entry points
-    entries = [t for t in trades if t['type'] == 'entry']
-    pyramids = [t for t in trades if t['type'] == 'pyramid']
-    exits = [t for t in trades if t['type'] == 'exit']
-    stops = [t for t in trades if t['type'] == 'stop']
-    
-    if entries:
-        entry_dates = [t['date'] for t in entries]
-        entry_prices = [t['price'] for t in entries]
-        ax1.scatter(entry_dates, entry_prices, marker='^', color='green', 
-                   s=100, label='Entry (Breakout)', zorder=5, edgecolors='darkgreen', linewidth=1.5)
-    
-    if pyramids:
-        pyr_dates = [t['date'] for t in pyramids]
-        pyr_prices = [t['price'] for t in pyramids]
-        ax1.scatter(pyr_dates, pyr_prices, marker='^', color='lightgreen', 
-                   s=80, label='Pyramid Add', zorder=5, edgecolors='green', linewidth=1)
-    
-    if exits:
-        exit_dates = [t['date'] for t in exits]
-        exit_prices = [t['price'] for t in exits]
-        exit_colors = ['blue' if t.get('pnl', 0) > 0 else 'orange' for t in exits]
-        ax1.scatter(exit_dates, exit_prices, marker='v', c=exit_colors, 
-                   s=100, label='Exit (20-day Low)', zorder=5, edgecolors='darkblue', linewidth=1.5)
-    
-    if stops:
-        stop_dates = [t['date'] for t in stops]
-        stop_prices = [t['price'] for t in stops]
-        ax1.scatter(stop_dates, stop_prices, marker='X', color='red', 
-                   s=100, label='Stop Loss (2×ATR)', zorder=5, edgecolors='darkred', linewidth=1.5)
-    
-    ax1.set_title(f'{ticker} Price Chart with Turtle Trading Signals', fontsize=14, fontweight='bold')
-    ax1.set_xlabel('Date')
-    ax1.set_ylabel('Price ($)')
-    ax1.legend(loc='best', fontsize=9)
-    ax1.grid(True, alpha=0.3)
-    
-    # Bottom panel: Equity curve
-    eq = results['equity_curve']
-    ax2.plot(eq.index, eq['equity'], color='darkblue', linewidth=1.5)
-    ax2.fill_between(eq.index, results['starting_equity'], eq['equity'], 
-                     where=(eq['equity'] >= results['starting_equity']), 
-                     color='green', alpha=0.3, label='Profit')
-    ax2.fill_between(eq.index, results['starting_equity'], eq['equity'], 
-                     where=(eq['equity'] < results['starting_equity']), 
-                     color='red', alpha=0.3, label='Loss')
-    ax2.axhline(y=results['starting_equity'], color='gray', linestyle='--', 
-               linewidth=1, alpha=0.7, label='Starting Equity')
-    ax2.set_title('Equity Curve', fontsize=12, fontweight='bold')
-    ax2.set_xlabel('Date')
-    ax2.set_ylabel('Equity ($)')
-    ax2.legend(loc='best', fontsize=9)
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-
-# ----- Example usage -----
+# ----- Main execution -----
 if __name__ == "__main__":
-    ticker = "AAPL"
-    start = "2018-01-01"
-    df = download_data(ticker, start=start)
-    df, results = run_simple_turtle_backtest(df,
-                                            starting_equity=100_000,
-                                            risk_per_trade=0.01,
-                                            stop_multiplier=2.0,
-                                            lookback_entry=55,
-                                            lookback_exit=20,
-                                            atr_window=20,
-                                            use_wilder_atr=False,
-                                            max_units=4)
-    simple_report(results)
-    plot_trades_on_price(df, results, ticker)
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Turtle Trading Position Scanner')
+    parser.add_argument('--mode', type=str, default='scan', choices=['scan', 'monitor'],
+                       help='Mode: scan for entries or monitor existing positions')
+    parser.add_argument('--count', type=int, default=300,
+                       help='Number of stocks to scan (default: 300)')
+    parser.add_argument('--top', type=int, default=20,
+                       help='Number of top signals to return (default: 20)')
+    parser.add_argument('--save', action='store_true',
+                       help='Save results to CSV file')
+    parser.add_argument('--capital', type=float, default=None,
+                        help='Total trading capital to size positions (e.g., 20000)')
+    parser.add_argument('--risk', type=float, default=0.01,
+                        help='Risk per trade as a fraction of capital (default: 0.01 = 1%)')
+    
+    args = parser.parse_args()
+    
+    if args.mode == 'scan':
+        # Scan for entry signals
+        tickers = get_top_us_stocks(args.count)
+        
+        if not tickers:
+            print("❌ Could not retrieve ticker list.")
+            exit(1)
+        
+        signals_df = scan_for_entries(tickers, top_n=args.top)
+        print_entry_signals(signals_df, capital=args.capital, risk_pct=args.risk)
+        
+        if args.save and not signals_df.empty:
+            save_signals_to_csv(signals_df)
+    
+    elif args.mode == 'monitor':
+        # Example: Monitor existing positions
+        # YOU SHOULD MODIFY THIS with your actual positions
+        print("\n⚠️  EXAMPLE MODE: Update the 'positions' list in the code with your actual holdings.\n")
+        
+        # Example positions (MODIFY THIS with your actual positions)
+        positions = [
+            {'ticker': 'AAPL', 'entry_price': 150.00, 'shares': 100},
+            {'ticker': 'MSFT', 'entry_price': 330.00, 'shares': 50},
+            # Add more positions here
+        ]
+        
+        if not positions:
+            print("❌ No positions to monitor. Add positions to the 'positions' list.")
+        else:
+            status_df = monitor_positions(positions)
+            print_position_status(status_df)
+            
+            if args.save and not status_df.empty:
+                filename = f"output/position_status_{datetime.now().strftime('%Y%m%d')}.csv"
+                save_signals_to_csv(status_df, filename)
+    
+    print("\n✅ Done!\n")
