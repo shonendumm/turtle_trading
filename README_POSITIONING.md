@@ -17,7 +17,7 @@ pip install tqdm
 Run this every day to find new entry opportunities:
 
 ```bash
-python turtle_trade_positioning.py --mode scan --count 300 --top 20 --save
+python turtle_trade_positioning.py --mode scan --top 20 --save --capital 20000 --risk 0.01
 ```
 
 **Parameters:**

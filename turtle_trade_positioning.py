@@ -13,6 +13,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 from tqdm import tqdm
+import math
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -277,8 +278,11 @@ def scan_for_entries(tickers: List[str],
     # Return top N
     return df.head(top_n)
 
-def print_entry_signals(df: pd.DataFrame):
-    """Pretty print entry signals."""
+def print_entry_signals(df: pd.DataFrame, capital: float | None = None, risk_pct: float = 0.01):
+    """Pretty print entry signals. If capital is provided, also show position sizing.
+    capital: total trading capital available (e.g., 20000)
+    risk_pct: fraction of capital to risk per trade (e.g., 0.01 for 1%)
+    """
     if df.empty:
         return
     
@@ -299,6 +303,20 @@ def print_entry_signals(df: pd.DataFrame):
         print(f"  ATR (20-day):      ${row['atr']:.2f}")
         print(f"  Stop Loss:         ${row['stop_price']:.2f} (Entry - 2×ATR)")
         print(f"  Risk per share:    ${row['risk_per_share']:.2f}")
+        
+        # Optional: position sizing suggestions based on capital and risk
+        if capital is not None and row['risk_per_share'] > 0 and row['close'] > 0:
+            risk_budget = capital * max(min(risk_pct, 1.0), 0.0)
+            shares_by_risk = math.floor(risk_budget / row['risk_per_share']) if risk_budget > 0 else 0
+            shares_by_cap = math.floor(capital / row['close'])
+            suggested_shares = min(shares_by_risk, shares_by_cap)
+            suggested_shares = max(suggested_shares, 0)
+            est_cost = suggested_shares * row['close']
+            print(f"  -- With capital ${capital:,.0f} and risk {risk_pct*100:.1f}%:")
+            print(f"     Shares by risk:     {shares_by_risk:,}")
+            print(f"     Shares by capital:  {shares_by_cap:,}")
+            print(f"     Suggested shares:   {suggested_shares:,} (~${est_cost:,.2f})")
+        
         print(f"  ")
         print(f"  🎯 EXIT STRATEGY:")
         print(f"  Current 20-day low: ${row['exit_level']:.2f}")
@@ -403,6 +421,10 @@ if __name__ == "__main__":
                        help='Number of top signals to return (default: 20)')
     parser.add_argument('--save', action='store_true',
                        help='Save results to CSV file')
+    parser.add_argument('--capital', type=float, default=None,
+                        help='Total trading capital to size positions (e.g., 20000)')
+    parser.add_argument('--risk', type=float, default=0.01,
+                        help='Risk per trade as a fraction of capital (default: 0.01 = 1%)')
     
     args = parser.parse_args()
     
@@ -415,7 +437,7 @@ if __name__ == "__main__":
             exit(1)
         
         signals_df = scan_for_entries(tickers, top_n=args.top)
-        print_entry_signals(signals_df)
+        print_entry_signals(signals_df, capital=args.capital, risk_pct=args.risk)
         
         if args.save and not signals_df.empty:
             save_signals_to_csv(signals_df)
