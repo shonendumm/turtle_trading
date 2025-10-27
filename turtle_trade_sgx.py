@@ -625,8 +625,7 @@ if __name__ == "__main__":
         
         # Example positions (MODIFY THIS with your actual SGX positions)
         positions = [
-            {'ticker': 'D05.SI', 'entry_price': 35.50, 'shares': 100},   # DBS
-            {'ticker': 'O39.SI', 'entry_price': 13.20, 'shares': 200},   # OCBC
+            {'ticker': 'QC7.SI', 'entry_price': 0.505, 'shares': 1000},   # DBS
             # Add more positions here
         ]
         

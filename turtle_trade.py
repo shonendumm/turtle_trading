@@ -449,8 +449,10 @@ if __name__ == "__main__":
         
         # Example positions (MODIFY THIS with your actual positions)
         positions = [
-            {'ticker': 'AAPL', 'entry_price': 150.00, 'shares': 100},
-            {'ticker': 'MSFT', 'entry_price': 330.00, 'shares': 50},
+            {'ticker': 'F', 'entry_price': 13.84, 'shares': 100},
+            {'ticker': 'ALB', 'entry_price': 105.6, 'shares': 10},
+            {'ticker': 'AAPL', 'entry_price': 268.8, 'shares': 5},
+            {'ticker': 'GLW', 'entry_price': 89.37, 'shares': 10},
             # Add more positions here
         ]
         
