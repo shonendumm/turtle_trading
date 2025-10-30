@@ -591,13 +591,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Turtle Trading Position Scanner - Singapore Stocks')
     parser.add_argument('--mode', type=str, default='scan', choices=['scan', 'monitor'],
                        help='Mode: scan for entries or monitor existing positions')
-    parser.add_argument('--count', type=int, default=200,
-                       help='Number of SGX stocks to scan (default: 200)')
+    parser.add_argument('--count', type=int, default=300,
+                       help='Number of SGX stocks to scan (default: 300)')
     parser.add_argument('--top', type=int, default=20,
                        help='Number of top signals to return (default: 20)')
     parser.add_argument('--save', action='store_true',
                        help='Save results to CSV file')
-    parser.add_argument('--capital', type=float, default=None,
+    parser.add_argument('--capital', type=float, default=20_000,
                         help='Total trading capital in SGD to size positions (e.g., 20000)')
     parser.add_argument('--risk', type=float, default=0.01,
                         help='Risk per trade as a fraction of capital (default: 0.01 = 1%)')
@@ -626,6 +626,7 @@ if __name__ == "__main__":
         # Example positions (MODIFY THIS with your actual SGX positions)
         positions = [
             {'ticker': 'QC7.SI', 'entry_price': 0.505, 'shares': 1000},   # DBS
+            {'ticker': 'G92.SI', 'entry_price': 1.49, 'shares': 1000},   # China Aviation Oil
             # Add more positions here
         ]
         

@@ -421,7 +421,7 @@ if __name__ == "__main__":
                        help='Number of top signals to return (default: 20)')
     parser.add_argument('--save', action='store_true',
                        help='Save results to CSV file')
-    parser.add_argument('--capital', type=float, default=None,
+    parser.add_argument('--capital', type=float, default=20_000,
                         help='Total trading capital to size positions (e.g., 20000)')
     parser.add_argument('--risk', type=float, default=0.01,
                         help='Risk per trade as a fraction of capital (default: 0.01 = 1%)')
@@ -453,6 +453,7 @@ if __name__ == "__main__":
             {'ticker': 'ALB', 'entry_price': 105.6, 'shares': 10},
             {'ticker': 'AAPL', 'entry_price': 268.8, 'shares': 5},
             {'ticker': 'GLW', 'entry_price': 89.37, 'shares': 10},
+            {'ticker': 'CAT', 'entry_price': 585.49, 'shares': 1},
             # Add more positions here
         ]
         
