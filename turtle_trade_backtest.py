@@ -349,8 +349,8 @@ if __name__ == "__main__":
                        help='Stock ticker symbol (default: AAPL)')
     parser.add_argument('--start', type=str, default='2018-01-01',
                        help='Start date in YYYY-MM-DD format (default: 2018-01-01)')
-    parser.add_argument('--equity', type=float, default=100_000,
-                       help='Starting equity (default: 100000)')
+    parser.add_argument('--capital', type=float, default=100_000,
+                       help='Starting capital (default: 100000)')
     parser.add_argument('--risk', type=float, default=0.01,
                        help='Risk per trade as fraction (default: 0.01 = 1%%)')
     parser.add_argument('--stop-multiplier', type=float, default=2.0,
@@ -378,3 +378,5 @@ if __name__ == "__main__":
                                             max_units=args.max_units)
     simple_report(results)
     plot_trades_on_price(df, results, args.ticker)
+
+    print("Close chart to exit program")
