@@ -454,6 +454,7 @@ if __name__ == "__main__":
             {'ticker': 'AAPL', 'entry_price': 268.8, 'shares': 5},
             {'ticker': 'GLW', 'entry_price': 89.37, 'shares': 10},
             {'ticker': 'CAT', 'entry_price': 585.49, 'shares': 1},
+            {'ticker': 'CHRW', 'entry_price': 154.88, 'shares': 5},
             # Add more positions here
         ]
         
