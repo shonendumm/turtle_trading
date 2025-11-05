@@ -349,9 +349,9 @@ if __name__ == "__main__":
                        help='Stock ticker symbol (default: AAPL)')
     parser.add_argument('--start', type=str, default='2018-01-01',
                        help='Start date in YYYY-MM-DD format (default: 2018-01-01)')
-    parser.add_argument('--capital', type=float, default=100_000,
+    parser.add_argument('--capital', type=float, default=10_000,
                        help='Starting capital (default: 100000)')
-    parser.add_argument('--risk', type=float, default=0.01,
+    parser.add_argument('--risk', type=float, default=0.005,
                        help='Risk per trade as fraction (default: 0.01 = 1%%)')
     parser.add_argument('--stop-multiplier', type=float, default=2.0,
                        help='Stop loss multiplier of ATR (default: 2.0)')
@@ -368,7 +368,7 @@ if __name__ == "__main__":
     
     df = download_data(args.ticker, start=args.start)
     df, results = run_simple_turtle_backtest(df,
-                                            starting_equity=args.equity,
+                                            starting_equity=args.capital,
                                             risk_per_trade=args.risk,
                                             stop_multiplier=args.stop_multiplier,
                                             lookback_entry=args.entry_lookback,
